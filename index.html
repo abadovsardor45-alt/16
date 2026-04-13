@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <title>Cyber Frogger - Neon Crossing</title>
+    <style>
+        :root {
+            --bg: #0a0a0c;
+            --road: #1a1a1e;
+            --water: #001a33;
+            --frog: #39ff14;
+            --car: #ff0055;
+            --log: #ffaa00;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background-color: var(--bg);
+            color: #fff;
+            font-family: 'Segoe UI', sans-serif;
+            display: flex; align-items: center; justify-content: center;
+            min-height: 100vh; overflow: hidden;
+        }
+
+        .main-container { display: flex; gap: 20px; }
+
+        canvas {
+            border: 4px solid #333;
+            background: var(--road);
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+        }
+
+        .side-panel { width: 200px; display: flex; flex-direction: column; gap: 15px; }
+        .panel-box {
+            background: #15151a;
+            padding: 15px; border-radius: 12px;
+            border: 1px solid #333;
+        }
+
+        h3 { font-size: 11px; color: #666; text-transform: uppercase; margin-bottom: 5px; }
+        .stat-value { font-size: 24px; font-weight: bold; color: var(--frog); }
+
+        button {
+            width: 100%; padding: 15px; border: none; border-radius: 8px;
+            background: var(--frog); color: #000; font-weight: bold;
+            cursor: pointer; text-transform: uppercase;
+        }
+
+        .hint { font-size: 11px; color: #555; margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+<div class="main-container">
+    <div class="side-panel">
+        <div class="panel-box">
+            <h3>Ball</h3>
+            <div id="score" class="stat-value">0</div>
+            <h3 style="margin-top:10px">Hayot</h3>
+            <div id="lives" class="stat-value">3</div>
+        </div>
+
+        <div class="panel-box">
+            <h3>Settings</h3>
+            <label style="font-size: 11px; color: #888;">Tezlik</label>
+            <input type="range" id="gameSpeed" min="1" max="5" value="2" style="width:100%">
+        </div>
+
+        <button onclick="startGame()">START</button>
+        <p class="hint">Yo'nalish tugmalari (W,A,S,D yoki ←↑→↓) orqali boshqaring.</p>
+    </div>
+
+    <canvas id="frogger" width="400" height="500"></canvas>
+</div>
+
+<script>
+    const canvas = document.getElementById("frogger");
+    const ctx = canvas.getContext("2d");
+
+    const grid = 40;
+    let score = 0;
+    let lives = 3;
+    let gameActive = false;
+
+    // Baqa obyekti
+    const frog = {
+        x: grid * 4.5,
+        y: grid * 11,
+        w: grid * 0.7,
+        h: grid * 0.7
+    };
+
+    // To'siqlar massivi
+    let obstacles = [];
+
+    function initObstacles() {
+        obstacles = [];
+        // Mashinalar (Yo'lda)
+        for (let i = 0; i < 3; i++) {
+            obstacles.push(new Obstacle(i * 150, grid * 9, grid * 1.5, grid * 0.7, 2, 'car'));
+            obstacles.push(new Obstacle(i * 180, grid * 8, grid * 1.2, grid * 0.7, -1.5, 'car'));
+            obstacles.push(new Obstacle(i * 200, grid * 7, grid * 2, grid * 0.7, 2.5, 'car'));
+        }
+        // Jivitslar (Suvda)
+        for (let i = 0; i < 2; i++) {
+            obstacles.push(new Obstacle(i * 220, grid * 4, grid * 3, grid * 0.7, 1.2, 'log'));
+            obstacles.push(new Obstacle(i * 250, grid * 3, grid * 2.5, grid * 0.7, -1, 'log'));
+            obstacles.push(new Obstacle(i * 200, grid * 2, grid * 3.5, grid * 0.7, 1.8, 'log'));
+        }
+    }
+
+    function Obstacle(x, y, w, h, speed, type) {
+        this.x = x; this.y = y; this.w = w; this.h = h;
+        this.speed = speed; this.type = type;
+
+        this.draw = function() {
+            ctx.fillStyle = this.type === 'car' ? '#ff0055' : '#ffaa00';
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = ctx.fillStyle;
+            ctx.fillRect(this.x, this.y, this.w, this.h);
+            ctx.shadowBlur = 0;
+        };
+
+        this.update = function() {
+            let speedMult = parseFloat(document.getElementById('gameSpeed').value);
+            this.x += this.speed * (speedMult / 2);
+            if (this.speed > 0 && this.x > canvas.width) this.x = -this.w;
+            if (this.speed < 0 && this.x < -this.w) this.x = canvas.width;
+        };
+    }
+
+    function checkCollision() {
+        // Yo'ldagi mashinalar bilan to'qnashuv
+        for (let o of obstacles) {
+            if (frog.x < o.x + o.w && frog.x + frog.w > o.x &&
+                frog.y < o.y + o.h && frog.y + frog.h > o.y) {
+                if (o.type === 'car') resetFrog();
+            }
+        }
+
+        // Suv qismiga kirdi
+        if (frog.y < grid * 5 && frog.y > grid * 1) {
+            let onLog = false;
+            for (let o of obstacles) {
+                if (o.type === 'log' && frog.x < o.x + o.w && frog.x + frog.w > o.x &&
+                    frog.y < o.y + o.h && frog.y + frog.h > o.y) {
+                    onLog = true;
+                    let speedMult = parseFloat(document.getElementById('gameSpeed').value);
+                    frog.x += o.speed * (speedMult / 2); // Baqa log bilan birga suzadi
+                }
+            }
+            if (!onLog) resetFrog();
+        }
+
+        // Marra
+        if (frog.y < grid * 1) {
+            score += 100;
+            document.getElementById('score').innerText = score;
+            resetFrog(true);
+        }
+
+        // Chegaradan chiqib ketish
+        if (frog.x < 0 || frog.x > canvas.width - frog.w) resetFrog();
+    }
+
+    function resetFrog(win = false) {
+        if (!win) {
+            lives--;
+            document.getElementById('lives').innerText = lives;
+            if (lives === 0) {
+                alert("Game Over! Ball: " + score);
+                location.reload();
+            }
+        }
+        frog.x = grid * 4.5;
+        frog.y = grid * 11;
+    }
+
+    function draw() {
+        if (!gameActive) return;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Suv maydoni
+        ctx.fillStyle = "#001a33";
+        ctx.fillRect(0, grid * 2, canvas.width, grid * 3);
+
+        // O'tloqlar
+        ctx.fillStyle = "#1a1a1e";
+        ctx.fillRect(0, grid * 1, canvas.width, grid);
+        ctx.fillRect(0, grid * 5, canvas.width, grid);
+        ctx.fillRect(0, grid * 11, canvas.width, grid);
+
+        // To'siqlar
+        obstacles.forEach(o => { o.update(); o.draw(); });
+
+        // Baqa
+        ctx.fillStyle = "#39ff14";
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = "#39ff14";
+        ctx.fillRect(frog.x, frog.y, frog.w, frog.h);
+        ctx.shadowBlur = 0;
+
+        checkCollision();
+        requestAnimationFrame(draw);
+    }
+
+    window.addEventListener("keydown", e => {
+        if (!gameActive) return;
+        if (e.key === "ArrowUp" || e.key === "w") frog.y -= grid;
+        if (e.key === "ArrowDown" || e.key === "s") frog.y += grid;
+        if (e.key === "ArrowLeft" || e.key === "a") frog.x -= grid;
+        if (e.key === "ArrowRight" || e.key === "d") frog.x += grid;
+    });
+
+    function startGame() {
+        score = 0; lives = 3;
+        document.getElementById('score').innerText = 0;
+        document.getElementById('lives').innerText = 3;
+        initObstacles();
+        gameActive = true;
+        draw();
+    }
+</script>
+</body>
+</html>
